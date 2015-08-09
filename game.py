@@ -1,6 +1,7 @@
 import string
 from units import *
 from rendering import Renderer
+from copy import deepcopy
 
 class Game(object):
 
@@ -13,28 +14,11 @@ class Game(object):
         self.renderer = Renderer()
 
     def draw_board(self):
-        self.renderer.render_board(self.board)
-
-    # Gets all the possible moves for a player.
-    def get_player_moves(self, player):
-        
-        moves = []
-        grid = self.board.get_grid()
-        for row in grid:
-            for tile in row:
-                # If the tile contains a unit.
-                if tile:
-                    # If the given player owns the unit.
-                    if tile.owner == player:
-                        # Add the possible moves from that unit to
-                        # the player's possible moves.
-                        moves += [[m, tile] for m in tile.get_moves(self.board)]
-        
-        return moves
+        self.renderer.render_grid(self.board.get_grid())
 
     # Gets a move from the player.
     def get_user_move(self, player):
-        possible_moves = self.get_player_moves(player)
+        possible_moves = self.board.get_player_moves(player)
         print '\nCommand format: <unit x><unit y> to <target x><target y>'
         valid = False
         
@@ -54,7 +38,7 @@ class Game(object):
                 continue
 
             # Get the unit object.
-            unit = self.board.get(unit_x, unit_y)
+            unit = self.board.grid.get(unit_x, unit_y)
             
             # Make sure a unit exists in that tile.
             # And that it's owned by the player
@@ -71,6 +55,40 @@ class Game(object):
                 else:
                     print "Sorry, that isn't a valid move."
                     continue
+    
+    def execute_move(self, move):
+        target, unit = move
+        
+        # Handle the actions in order of precedence.
+        actions = sorted(unit.move_actions(target, self.board.grid))
+
+        for a in actions:
+            if a == SWAP:
+                pass
+            
+            elif a == CAPTURE:
+                other = self.get(target[0], target[1])
+                # Record the capture.
+                unit.owner.add_capture(other)
+                # Delete the other unit.
+                other.owner.remove_unit(other)
+            
+            elif a == MOVE:
+                pass
+
+            elif a == PROMOTE:
+                pass
+
+            # Update the board.
+            self.board.execute(unit, target, a)
+
+        # Update the unit's position.
+        unit.update_position(target)
+
+        #Update that the unit has moved.
+        if not unit.has_moved:
+            unit.has_moved = True
+
 
     def turn(self):
         if self.turn_count % 2 == 0:
@@ -83,150 +101,127 @@ class Game(object):
         self.draw_board()
         self.turn_count += 1
 
-    def execute_move(self, move):
-        target, unit = move
-        
-        # Handle the actions in order of precedence.
-        actions = sorted(unit.move_actions(target, self.board))
-
-        for a in actions:
-            if a == SWAP:
-                self.board.swap(unit, target)
-            
-            elif a == CAPTURE:
-                self.board.capture(unit, target)
-            
-            elif a == MOVE:
-                self.board.move(unit, target)
-
-            elif a == PROMOTE:
-                self.board.promote(unit)
-
-        # Update the unit's position.
-        unit.update_position(target)
-
     def play(self):
         self.draw_board()
         while True:
             self.turn()
 
+class Grid(object):
+
+    def __init__(self, height, width):
+        # Board dimensions.
+        self.width = width
+        self.height = height
+        self.tiles = [
+            [None for i in range(self.height)] for j in range(self.width)]
+
+    # Access the board's grid.
+    def get(self, x, y):
+        return self.tiles[y][x]
+
+    # Set a tile
+    def set(self, val, x, y):
+        self.tiles[y][x] = val
 
 class ChessBoard(object):
 
     def __init__(self, width=8, height=8):
-
-        # Board dimensions.
-        self.width = width
-        self.height = height
         
         # This will hold the actual units,
         # and will be used for logic.
-        self.grid = [
-            [None for i in range(self.height)] for j in range(self.width)]
+        self.grid = Grid(width, height)
 
     # Generate a homerow of pieces.
     def __homerow__(self, owner, top=True):
         if top:
-            y = self.height - 1
-            middle = [King(owner, 3, y), Queen(owner, 4, y)]
-            
+            y = self.grid.height - 1    
         else:
             y = 0
-            middle = [Queen(owner, 3, y), King(owner, 4, y)]
 
         row = [Rook(owner, 0, y), Knight(owner, 1, y), Bishop(owner, 2, y)]
-        row += middle
+        row += [Queen(owner, 3, y), King(owner, 4, y)]
         row += [Bishop(owner, 5, y), Knight(owner, 6, y), Rook(owner, 7, y)]
         
         return row
 
     def populate(self, player_one, player_two):
-        self.grid[0] = self.__homerow__(player_one, top=False)
-        self.grid[1] = [Pawn(player_one, i, 1) for i in range(self.width)]
-        self.grid[self.height - 1] = self.__homerow__(player_two, top=True)
-        self.grid[self.height - 2] = [Pawn(player_two, i, self.height - 2) for i in range(self.width)]
+        self.grid.tiles[0] = self.__homerow__(player_one, top=False)
+        self.grid.tiles[1] = [Pawn(player_one, i, 1) for i in range(self.grid.width)]
+        self.grid.tiles[self.grid.height - 1] = self.__homerow__(player_two, top=True)
+        self.grid.tiles[self.grid.height - 2] = [Pawn(player_two, i, self.grid.height - 2) for i in range(self.grid.width)]
 
     # Return the whole grid.
     def get_grid(self):
         return self.grid
 
-    # Access the board's grid.
-    def get(self, x, y):
-        return self.grid[y][x]
+    # Gets all the possible moves for a player.
+    def get_player_moves(self, player, grid=None):
+        moves = []
+        if grid is None:
+            grid = self.grid
+        for row in grid.tiles:
+            for tile in row:
+                # If the tile contains a unit.
+                if tile:
+                    unit = tile
+                    # If the given player owns the unit.
+                    if unit.owner == player:
+                        # Add the possible moves from that unit to
+                        # the player's possible moves.
+                        moves += [[m, unit] for m in unit.get_moves(self.get_grid())]
+        
+        return moves
 
-    def set(self, val, x, y):
-        self.grid[y][x] = val
+    def execute(self, unit, target, action, grid=None):
+            if grid is None:
+                grid = self.grid
 
-    # Determine the direction of a move relative to the unit.
-    def get_move_direction(self, origin, destination):
-        ox, oy = origin
-        dx, dy = destination
-        diff_x = dx - ox
-        diff_y = dy - oy
+            if action == SWAP:
+                self.swap(unit, target, grid)
+            
+            elif action == CAPTURE:
+                self.capture(unit, target, grid)
+            
+            elif action == MOVE:
+                self.move(unit, target, grid)
 
-        # Diagonal case.
-        if abs(diff_x) == abs(diff_y):
-            if diff_x < 0:
-                if diff_y > 0:
-                    return DIAG_L
-                elif diff_y < 0:
-                    return -DIAG_L
+            elif action == PROMOTE:
+                pass
 
-            elif diff_x > 0:
-                if diff_y > 0:
-                    return DIAG_R
-                elif diff_y < 0:
-                    return -DIAG_R
-
-        # Horizontal case.
-        elif abs(diff_x) > abs(diff_y):
-            if diff_x > 0:
-                return HORIZ
-            else:
-                return -HORIZ
-
-        # Vertical case.
-        elif abs(diff_y) > abs(diff_x):
-            if diff_y > 0:
-                return VERT
-            else:
-                return -VERT
-
-    def swap(self, unit, target):
+    def swap(self, unit, target, grid):
         ux = unit.x
         uy = unit.y
 
-        other = self.get(target[0], target[1])
+        other = grid.get(target[0], target[1])
         other.update_position([ux, uy])
 
-        self.set(unit, target[0], target[1])
-        self.set(other, ux, uy)
+        grid.set(unit, target[0], target[1])
+        grid.set(other, ux, uy)
 
-    def move(self, unit, target):
+    def move(self, unit, target, grid):
         ux = unit.x
         uy = unit.y
-        self.set(unit, target[0], target[1])
-        self.set(None, ux, uy)
+        grid.set(unit, target[0], target[1])
+        grid.set(None, ux, uy)
 
-    def capture(self, unit, target):
-        other = self.get(target[0], target[1])
+    def capture(self, unit, target, grid):
+        grid.set(None, target[0], target[1])
 
-        # Record the capture.
-        unit.owner.add_capture(other)
-
-        # Delete the other unit.
-        other.owner.remove_unit(other)
-        self.set(None, target[0], target[1])
-
-    def promote(old_unit, new_unit_type):
+    def promote(self, old_unit, new_unit_type):
         ux = old_unit.x
         uy = old_unit.y
         old_unit.owner.remove_unit(old_unit)
 
         # Add the new unit.
         new_unit = new_unit_type(old_unit.owner, ux, uy)
-        self.set(new_unit, ux, uy)
+        grid.set(new_unit, ux, uy)
 
+    def leads_to_check(self, move):
+        target, unit = move
+        # A hypothetical grid.
+        hyp_grid = deepcopy(self.grid)
+        action = unit.move_actions()
+        
 
 class Player(object):
 
@@ -257,4 +252,5 @@ def main():
     g.play()
     exit()
 
-main()
+if __name__ == '__main__':
+    main()
