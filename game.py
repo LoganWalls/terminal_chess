@@ -1,24 +1,117 @@
 import string
+from logic import *
 from units import *
 from rendering import Renderer
-from copy import deepcopy
+from copy import copy
+
+class State(object):
+
+    def __init__(self, grid, turn, p1_caps=[], p2_caps=[]):
+        # Game information.
+        self.grid = grid
+        self.p1_check = self.__in_check__(PLAYER1)
+        self.p2_check = self.__in_check__(PLAYER2)
+        
+        # Units each player has captured.
+        self.p1_caps = p1_caps
+        self.p2_caps = p2_caps
+
+        # The number of turns which have passed.
+        self.turn = turn
+
+    # Returns whether or not the given player is in check
+    # in this state.
+    def __in_check__(self, player):
+        return False
+        #  ------ get KING ------
+
+        if player == PLAYER1:
+            opponent = PLAYER2
+        else:
+            opponent = PLAYER1
+
+        opponent_moves = self.get_player_moves(opponent)
+        
+        for m in opponent_moves:
+            x, y = m[0]
+            # If taking the King is a valid move for
+            # the opponent...
+            if self.grid.get(x, y) == king:
+                return True
+
+        return False
+
+    def in_check(self, player):
+        if player == PLAYER1:
+            return self.p1_check
+        else:
+            return self.p2_check
+
+    # Gets all the possible moves for a player.
+    def get_player_moves(self, player):
+        moves = []
+        for x in xrange(GRID_WIDTH):
+            for y in xrange(GRID_HEIGHT):
+                unit = self.grid.get(x, y)
+                # If the tile contains a unit.
+                if unit:
+                    # If the given player owns the unit.
+                    if unit.owner == player:
+                        # Add the possible moves from that unit to
+                        # the player's possible moves.
+                        moves += unit.get_moves([x, y], self)
+        
+        return moves
+
 
 class Game(object):
 
     def __init__(self):
-        self.players = [Player('P1', 1), Player('P2', -1)]
-        self.board = ChessBoard()
-        self.board.populate(self.players[0], self.players[1])
-        self.turn_count = 0
+        # This will hold the actual units,
+        # and will be used for logic.
+        initial_grid = Grid(GRID_WIDTH, GRID_HEIGHT)
+        self.__populate_grid__(initial_grid)
 
+        # This will be the initial state.
+        self.state = State(initial_grid, 0)
+        
+        # Keep track of how many turn
         self.renderer = Renderer()
 
-    def draw_board(self):
-        self.renderer.render_grid(self.board.get_grid())
+    # Generate a homerow of pieces.
+    def __homerow__(self, owner, top=True):
+        if top:
+            y = GRID_HEIGHT - 1
+            direction = -1   
+        else:
+            y = 0
+            direction = 1
+
+        row = [Rook(owner, direction), Knight(owner, direction), Bishop(owner, direction)]
+        row += [Queen(owner, direction), King(owner, direction)]
+        row += [Bishop(owner, direction), Knight(owner, direction), Rook(owner, direction)]
+        
+        return row
+
+    # Populate a board with units in their default placement.
+    def __populate_grid__(self, grid):
+        # Bottom side of the board.
+        grid.tiles[0] = self.__homerow__(PLAYER1, top=False)
+        grid.tiles[1] = [Pawn(PLAYER1, 1) for i in range(GRID_WIDTH)]
+
+        # Top side of the board.
+        grid.tiles[GRID_HEIGHT - 1] = self.__homerow__(PLAYER2, top=True)
+        grid.tiles[GRID_HEIGHT - 2] = [Pawn(PLAYER2, -1) for i in range(GRID_WIDTH)]
+
+
+    def draw_state(self):
+        self.renderer.render_state(self.state)
 
     # Gets a move from the player.
     def get_user_move(self, player):
-        possible_moves = self.board.get_player_moves(player)
+        moveset = self.state.get_player_moves(player)
+        coords = [m[:2] for m in moveset]
+        #print moveset
         print '\nCommand format: <unit x><unit y> to <target x><target y>'
         valid = False
         
@@ -38,7 +131,8 @@ class Game(object):
                 continue
 
             # Get the unit object.
-            unit = self.board.grid.get(unit_x, unit_y)
+            unit = self.state.grid.get(unit_x, unit_y)
+            print unit
             
             # Make sure a unit exists in that tile.
             # And that it's owned by the player
@@ -49,62 +143,79 @@ class Game(object):
 
             else:
                 # Make sure the target is a valid move.
-                move = [[target_x, target_y], unit]
-                if move in possible_moves:
-                    return move
+                move = [[unit_x, unit_y], [target_x, target_y]]
+                if move in coords:
+                    # Return the appropriate move object.
+                    return moveset[coords.index(move)]
                 else:
                     print "Sorry, that isn't a valid move."
                     continue
-    
-    def execute_move(self, move):
-        target, unit = move
-        
-        # Handle the actions in order of precedence.
-        actions = sorted(unit.move_actions(target, self.board.grid))
 
-        for a in actions:
-            if a == SWAP:
-                pass
-            
-            elif a == CAPTURE:
-                other = self.get(target[0], target[1])
-                # Record the capture.
-                unit.owner.add_capture(other)
-                # Delete the other unit.
-                other.owner.remove_unit(other)
-            
-            elif a == MOVE:
-                pass
 
-            elif a == PROMOTE:
-                pass
+    def execute(self, cur_state, move):
+        origin, target, flag = move
+        if flag:
+            if flag['action'] == CASTLE:
+                #self.castle(origin, target, flag['side'])
+                print 'Castling not yet implmented.'
+            elif flag['action'] == PROMOTION:
+                print 'Promotion not yet implemented.'
 
-            # Update the board.
-            self.board.execute(unit, target, a)
+        new_state = self.move(cur_state, origin, target)
+        new_state.turn += 1
 
-        # Update the unit's position.
-        unit.update_position(target)
+        return new_state
+
+
+    def move(self, cur_state, origin, target):
+        # Move and Unit Information
+        ox, oy = origin
+        tx, ty = target
+        unit = cur_state.grid.get(ox, oy)
+        target_unit = cur_state.grid.get(tx, ty)
+
+        # Current State Information
+        turn = cur_state.turn
+        p1_caps = cur_state.p1_caps
+        p2_caps = cur_state.p2_caps
 
         #Update that the unit has moved.
         if not unit.has_moved:
             unit.has_moved = True
 
+        # If the target is a unit...
+        if target_unit:
+            # Record the capture.
+            if unit.owner == PLAYER1:
+                p1_caps.append(target_unit)
+            else:
+                p2_caps.append(target_unit)
 
-    def turn(self):
-        if self.turn_count % 2 == 0:
-            player = self.players[0]
+        # Construct the new state where the unit is moved.
+        # (Since in the event of a capture the captured unit
+        #  will be overwritten in the grid, no special
+        #  handling is required.)
+
+        new_grid = copy(cur_state.grid)
+        new_grid.set(unit, tx, ty)
+        new_grid.set(None, ox, oy)
+
+        return State(new_grid, turn, p1_caps, p2_caps)
+
+    def advance_turn(self):
+        if self.state.turn % 2 == 0:
+            player = PLAYER1
         else:
-            player = self.players[1]
+            player = PLAYER2
 
         move = self.get_user_move(player)
-        self.execute_move(move)
-        self.draw_board()
-        self.turn_count += 1
+        self.state = self.execute(self.state, move)
+        self.draw_state()
 
     def play(self):
-        self.draw_board()
+        self.draw_state()
         while True:
-            self.turn()
+            self.advance_turn()
 
 class Grid(object):
 
@@ -122,129 +233,6 @@ class Grid(object):
     # Set a tile
     def set(self, val, x, y):
         self.tiles[y][x] = val
-
-class ChessBoard(object):
-
-    def __init__(self, width=8, height=8):
-        
-        # This will hold the actual units,
-        # and will be used for logic.
-        self.grid = Grid(width, height)
-
-    # Generate a homerow of pieces.
-    def __homerow__(self, owner, top=True):
-        if top:
-            y = self.grid.height - 1    
-        else:
-            y = 0
-
-        row = [Rook(owner, 0, y), Knight(owner, 1, y), Bishop(owner, 2, y)]
-        row += [Queen(owner, 3, y), King(owner, 4, y)]
-        row += [Bishop(owner, 5, y), Knight(owner, 6, y), Rook(owner, 7, y)]
-        
-        return row
-
-    def populate(self, player_one, player_two):
-        self.grid.tiles[0] = self.__homerow__(player_one, top=False)
-        self.grid.tiles[1] = [Pawn(player_one, i, 1) for i in range(self.grid.width)]
-        self.grid.tiles[self.grid.height - 1] = self.__homerow__(player_two, top=True)
-        self.grid.tiles[self.grid.height - 2] = [Pawn(player_two, i, self.grid.height - 2) for i in range(self.grid.width)]
-
-    # Return the whole grid.
-    def get_grid(self):
-        return self.grid
-
-    # Gets all the possible moves for a player.
-    def get_player_moves(self, player, grid=None):
-        moves = []
-        if grid is None:
-            grid = self.grid
-        for row in grid.tiles:
-            for tile in row:
-                # If the tile contains a unit.
-                if tile:
-                    unit = tile
-                    # If the given player owns the unit.
-                    if unit.owner == player:
-                        # Add the possible moves from that unit to
-                        # the player's possible moves.
-                        moves += [[m, unit] for m in unit.get_moves(self.get_grid())]
-        
-        return moves
-
-    def execute(self, unit, target, action, grid=None):
-            if grid is None:
-                grid = self.grid
-
-            if action == SWAP:
-                self.swap(unit, target, grid)
-            
-            elif action == CAPTURE:
-                self.capture(unit, target, grid)
-            
-            elif action == MOVE:
-                self.move(unit, target, grid)
-
-            elif action == PROMOTE:
-                pass
-
-    def swap(self, unit, target, grid):
-        ux = unit.x
-        uy = unit.y
-
-        other = grid.get(target[0], target[1])
-        other.update_position([ux, uy])
-
-        grid.set(unit, target[0], target[1])
-        grid.set(other, ux, uy)
-
-    def move(self, unit, target, grid):
-        ux = unit.x
-        uy = unit.y
-        grid.set(unit, target[0], target[1])
-        grid.set(None, ux, uy)
-
-    def capture(self, unit, target, grid):
-        grid.set(None, target[0], target[1])
-
-    def promote(self, old_unit, new_unit_type):
-        ux = old_unit.x
-        uy = old_unit.y
-        old_unit.owner.remove_unit(old_unit)
-
-        # Add the new unit.
-        new_unit = new_unit_type(old_unit.owner, ux, uy)
-        grid.set(new_unit, ux, uy)
-
-    def leads_to_check(self, move):
-        target, unit = move
-        # A hypothetical grid.
-        hyp_grid = deepcopy(self.grid)
-        action = unit.move_actions()
-        
-
-class Player(object):
-
-    def __init__(self, player_name, direction):
-        self.p_name = player_name
-
-        # This player's active units.
-        self.units = []
-        
-        # Units this player has captured.
-        self.captures = []
-
-        # The direction this player is facing.
-        self.direction = direction
-
-    def add_capture(self, unit):
-        self.captures.append(unit)
-
-    def add_unit(self, unit):
-        self.units.append(unit)
-
-    def remove_unit(self, unit):
-        self.units.remove(unit)
 
 
 def main():

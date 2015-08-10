@@ -6,6 +6,9 @@ class Renderer(object):
     def __init__(self):
         pass
 
+    def render_state(self, state):
+        self.render_grid(state.grid)
+
     def render_grid(self, grid):
         tiles = grid.tiles
         line = '   ' + ('-' * (grid.width * 4)) + '-'
