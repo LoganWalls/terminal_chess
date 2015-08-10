@@ -1,3 +1,4 @@
+from constant_defs import *
 from logic import *
 
 class Unit(object):
@@ -58,6 +59,9 @@ class Unit(object):
         origin <[int, int]>: An [x, y] coordinate pair of the unit's 
                              current grid position.
         state <State>: The current game-state object.
+        sim_depth <int>: The recursion depth when simulating moves
+                            (Disables checking for 'king check'
+                             to avoid infinite loop)
     Returns:
         <[[int, int], [int, int], dict]]>: 
 
@@ -70,7 +74,7 @@ class Unit(object):
                                 about the move (castling, pawn promotion, etc.)
                                 (flag is None if there is no special behavior)
     '''
-    def get_moves(self, origin, state):
+    def get_moves(self, origin, state, sim_depth=False):
         grid = state.grid
         all_moves = self.__get_all_moves__(origin, state)
         ox, oy = origin
@@ -101,12 +105,23 @@ class Unit(object):
                 #  us if applicable blocks).
                 blocks.append(move_dir)
 
-
             # See how to handle the move.
             handling = self.__handle_interaction__(origin, target, other)
             # If it's valid...
             if handling is not None:
-                moves.append(handling)
+                # Avoid infinite recursion by ignoring 'check'
+                # conditions if the recursion depth is bigger than 2.
+                if sim_depth < 1:
+                    # See if the move would cause a player to end up in check.
+                    if state.leads_to_check(origin, target, self.owner):
+                        continue
+                    # It must be a valid move.
+                    else:
+                        moves.append(handling)
+                
+                # It must be a valid move.
+                else:
+                    moves.append(handling)
 
         return moves
 

@@ -1,67 +1,9 @@
 import string
-from logic import *
+from constant_defs import *
+from state import *
 from units import *
 from rendering import Renderer
-from copy import copy
-
-class State(object):
-
-    def __init__(self, grid, turn, p1_caps=[], p2_caps=[]):
-        # Game information.
-        self.grid = grid
-        self.p1_check = self.__in_check__(PLAYER1)
-        self.p2_check = self.__in_check__(PLAYER2)
-        
-        # Units each player has captured.
-        self.p1_caps = p1_caps
-        self.p2_caps = p2_caps
-
-        # The number of turns which have passed.
-        self.turn = turn
-
-    # Returns whether or not the given player is in check
-    # in this state.
-    def __in_check__(self, player):
-        return False
-        #  ------ get KING ------
-
-        if player == PLAYER1:
-            opponent = PLAYER2
-        else:
-            opponent = PLAYER1
-
-        opponent_moves = self.get_player_moves(opponent)
-        
-        for m in opponent_moves:
-            x, y = m[0]
-            # If taking the King is a valid move for
-            # the opponent...
-            if self.grid.get(x, y) == king:
-                return True
-
-        return False
-
-    def in_check(self, player):
-        if player == PLAYER1:
-            return self.p1_check
-        else:
-            return self.p2_check
-
-    # Gets all the possible moves for a player.
-    def get_player_moves(self, player):
-        moves = []
-        for x in xrange(GRID_WIDTH):
-            for y in xrange(GRID_HEIGHT):
-                unit = self.grid.get(x, y)
-                # If the tile contains a unit.
-                if unit:
-                    # If the given player owns the unit.
-                    if unit.owner == player:
-                        # Add the possible moves from that unit to
-                        # the player's possible moves.
-                        moves += unit.get_moves([x, y], self)
-        
-        return moves
+from copy import deepcopy
 
 
 class Game(object):
@@ -132,7 +74,6 @@ class Game(object):
 
             # Get the unit object.
             unit = self.state.grid.get(unit_x, unit_y)
-            print unit
             
             # Make sure a unit exists in that tile.
             # And that it's owned by the player
@@ -216,23 +157,6 @@ class Game(object):
         self.draw_state()
         while True:
             self.advance_turn()
-
-class Grid(object):
-
-    def __init__(self, height, width):
-        # Board dimensions.
-        self.width = width
-        self.height = height
-        self.tiles = [
-            [None for i in range(self.height)] for j in range(self.width)]
-
-    # Access the board's grid.
-    def get(self, x, y):
-        return self.tiles[y][x]
-
-    # Set a tile
-    def set(self, val, x, y):
-        self.tiles[y][x] = val
 
 
 def main():

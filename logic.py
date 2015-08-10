@@ -1,26 +1,5 @@
-# DEFINE DIRECTIONS
-HORIZ = 0
-VERT = 1
-DIAG_R = 2
-DIAG_L = 3
-
-# DEFINE CASTLE SIDES
-QUEENSIDE = 0
-KINGSIDE = 1
-
-# DEFINE
-# Grid Dimensions
-GRID_HEIGHT = 8
-GRID_WIDTH = 8
-
-# Player IDs
-PLAYER1 = 0
-PLAYER2 = 1
-
-# Actions
-CASTLE = 0
-PROMOTE = 1
-
+from constant_defs import *
+from copy import deepcopy
 
 '''
     Helper functions for game logic.
@@ -70,21 +49,9 @@ def valid_units(self):
         'pawn'
     ]
 
-def hypothetical_move(cur_state, origin, target):
-    ox, oy = origin
-    tx, ty = target
-    unit = cur_state.grid.get(ox, oy)
-    new_grid = copy(cur_state.grid)
-    new_grid.set(unit, tx, ty)
-    new_grid.set(None, ux, uy)
-    
-    p1 = cur_state.player1
-    p2 = cur_state.player2
-
-    return State(grid, 0)
-
 def crosses_check(cur_state, origin, target):
     pass
+
 
 # Assumes both pieces hace the same owner.
 def castle_check(unit, target, other):
